@@ -1,0 +1,429 @@
+Description:
+  This template deploys a Tnuva VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
+  and default routes for them in the private subnets.
+
+Parameters:
+  EnvironmentName:
+    Description: Name the project
+    Type: String
+
+  KeyName:
+    Description: Key Pair for EC2
+    Type: 'AWS::EC2::KeyPair::KeyName'
+
+  TagName:
+    Description: Please write name for the tag
+    Type: String
+
+  TagClient:
+    Description: Please write client-name for the tag
+    Type: String   
+
+  TagProject:
+    Description: Please write project-name for the tag
+    Type: String
+
+  TagChargeable:
+    Description: Please write Chargeable for the tag
+    Type: String  
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 172.32.0.0/16
+
+  InstanceImageId:
+    Description: Please enter instance amiId of Linux, Ubuntu.
+    Type: String
+    Default: ami-0a1ee2fb28fe05df3
+
+  InstanceType:
+    Description: Please enter instance type
+    Type: String
+    Default: t2.micro
+
+  InboundPortSSH:
+    Description: Please enter the Ip for port 22
+    Type: String
+    Default: 217.175.92.222/32
+
+  InboundPortHTTP:
+    Description: Please enter the Ip for port 80
+    Type: String
+    Default: 217.175.92.222/32
+
+  InboundPortHTTPS:
+    Description: Please enter the Ip for port 443
+    Type: String
+    Default: 217.175.92.222/32
+
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 172.32.10.0/24
+
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 172.32.20.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 172.32.30.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 172.32.40.0/24
+
+Resources:
+  TnuvaVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-internetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref TnuvaVPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: TnuvaVPC
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: TnuvaVPC
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TnuvaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+# EC2 and ALB Security Groups
+  TnuvaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "tnuva-sg"
+      GroupDescription: "Open to the world"
+      VpcId: !Ref TnuvaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TnuvaELBSecurityGroup
+            - GroupId
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref InboundPortSSH
+
+  TnuvaELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ELB Security Group
+      VpcId: !Ref TnuvaVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-ALB-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref InboundPortHTTP
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref InboundPortHTTPS  
+
+  # Target Group, Listener and Application  Load Balancer
+  EC2TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      Name: !Sub ${EnvironmentName}-TargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '20'
+      Targets:
+      - Id: !Ref TnuvaEC2
+        Port: 80
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref TnuvaVPC
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref EC2TargetGroup
+      LoadBalancerArn: !Ref TnuvaLB
+      Port: 80
+      Protocol: HTTP
+
+  TnuvaLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Tags:
+        - Key: Name
+          Value: Tnuva-LB
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !GetAtt TnuvaELBSecurityGroup.GroupId
+
+  TnuvaEC2:        
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref InstanceImageId
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !Ref TnuvaSecurityGroup
+      SubnetId: !Ref PublicSubnet2
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Client
+          Value: !Ref TagClient
+        - Key: Name
+          Value: !Ref TagName
+        - Key: Project
+          Value: !Ref TagProject
+        - Key: Chargeable
+          Value: !Ref TagChargeable   
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          systemctl enable httpd
+          #echo "<h1>Hello from Region us-east-2b</h1>" > /var/www/html/index.html
+
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref TnuvaEC2
+
+  # WAF on ALB
+  # MyWebACL: 
+  #   Type: "AWS::WAFv2::WebACL"
+  #   Properties: 
+  #     Name: !Sub ${EnvironmentName}-WAF
+  #     Scope: REGIONAL
+  #     Description: !Sub ${EnvironmentName} WAF
+  #     DefaultAction:
+  #       Allow:
+  #         CustomRequestHandling:
+  #           InsertHeaders:
+  #             - Name: AllowActionHeader1Name
+  #               Value: AllowActionHeader1Value
+  #             - Name: AllowActionHeader2Name
+  #               Value: AllowActionHeader2Value
+  #     VisibilityConfig:
+  #       SampledRequestsEnabled: false
+  #       CloudWatchMetricsEnabled: true
+  #       MetricName: ExampleWebACLMetric
+
+  # MyWebACLAssociation:
+  #   Type: "AWS::WAFv2::WebACLAssociation"
+  #   Properties:
+  #     WebACLArn: !GetAtt MyWebACL.Arn
+  #     ResourceArn: !Ref TnuvaLB
+
+  # RDS with Security Group
+  # MyDB:
+  #   Type: AWS::RDS::DBInstance
+  #   Properties:
+  #     DBInstanceIdentifier: !Ref DBName
+  #     Engine: MySQL
+  #     MasterUsername: !Ref MasterUsername
+  #     MasterUserPassword: !Ref MasterPassword
+  #     DBInstanceClass: db.t4g.micro
+  #     DBSubnetGroupName: !Ref DBSubnetGroup
+  #     Tags:
+  #       - Key: Client
+  #         Value: !Ref TagClient
+  #       - Key: Name
+  #         Value: !Ref TagName
+  #       - Key: Project
+  #         Value: !Ref TagProject
+  #       - Key: Chargeable
+  #         Value: !Ref TagChargeable 
+  #     DBSecurityGroups:
+  #     - Ref: DBSecurityGroup
+  #     AllocatedStorage: !Ref RDSstorage
+
+  # DBSecurityGroup:
+  #   Type: AWS::RDS::DBSecurityGroup
+  #   Properties:
+  #     DBSecurityGroupIngress:
+  #       EC2SecurityGroupId:
+  #         Ref: TnuvaSecurityGroup
+  #     GroupDescription: Frontend Access
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${EnvironmentName}-RDS-sg
+  #     EC2VpcId: !Ref TnuvaVPC
+      
+  # DBSubnetGroup: 
+  #  Type: "AWS::RDS::DBSubnetGroup"
+  #  Properties:
+  #   DBSubnetGroupDescription: Subnet for the database
+  #   SubnetIds:
+  #     - Ref : PublicSubnet1
+  #     - Ref : PublicSubnet2    

@@ -1,0 +1,55 @@
+Parameters:
+    ArtifactsBucket:
+        Type: String
+        Default: artifacts222.bucket
+        Description: S3 Bucket Name for CodeBuild Artifacts
+    DevBucket:
+        Type: String
+        Default: dev123.bucket
+        Description: S3 Bucket Name for Dev environment.
+    StagingBucket:
+        Type: String
+        Default: staging234.bucket
+        Description: S3 Bucket Name for Staging environment
+    ProductionBucket:
+        Type: String
+        Default: production234.bucket
+        Description: S3 Bucket Name for Production environment
+
+Resources:
+
+    # S3 Bucket for build artifacts
+    BuildArtifactsBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+          AccessControl: PublicRead
+          BucketName: !Sub '${ArtifactsBucket}'
+
+    # S3 Bucket for Dev environment
+    DevS3Bucket:
+        Type: AWS::S3::Bucket
+        Properties:
+          AccessControl: Private
+          BucketName: !Sub '${DevBucket}'
+          PublicAccessBlockConfiguration:
+            BlockPublicAcls: true
+            BlockPublicPolicy: true
+            IgnorePublicAcls: true
+            RestrictPublicBuckets: true
+        DependsOn: "BuildArtifactsBucket"
+
+    # S3 Bucket for Staging environment
+    StagingS3Bucket:
+        Type: AWS::S3::Bucket
+        Properties:
+          AccessControl: Private
+          BucketName: !Sub '${StagingBucket}'
+        DependsOn: "DevS3Bucket"
+
+    # S3 Bucket for Production environment
+    ProductionS3Bucket:
+        Type: AWS::S3::Bucket
+        Properties:
+          AccessControl: Private
+          BucketName: !Sub '${ProductionBucket}'
+        DependsOn: "StagingS3Bucket"

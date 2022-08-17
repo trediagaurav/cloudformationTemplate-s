@@ -1,0 +1,35 @@
+Resources:
+ # IMPORTANT : Want WAF to be global need to make it from N.Virginina region
+
+  MyWebACL: 
+    Type: "AWS::WAFv2::WebACL"
+    Properties: 
+      Name: MyWebACL
+      Scope: CLOUDFRONT # REGIONAL
+      Description: This is an example WebACL
+      DefaultAction:
+        Allow:
+          CustomRequestHandling:
+            InsertHeaders:
+              - Name: AllowActionHeader1Name
+                Value: AllowActionHeader1Value
+              - Name: AllowActionHeader2Name
+                Value: AllowActionHeader2Value
+      VisibilityConfig:
+        SampledRequestsEnabled: false
+        CloudWatchMetricsEnabled: true
+        MetricName: ExampleWebACLMetric
+      Rules:
+        - Name: RuleWithAWSManagedRules
+          Priority: 0
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: false
+            CloudWatchMetricsEnabled: true
+            MetricName: RuleWithAWSManagedRulesMetric
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules: []

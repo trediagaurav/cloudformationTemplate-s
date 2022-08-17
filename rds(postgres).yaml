@@ -1,0 +1,127 @@
+
+Parameters:
+  EnvironmentName:
+    Description: Name the project
+    Type: String
+
+  Identifier:
+    Description: Please write the name you want your project to get Identified 
+    Type: String
+
+  DBInstanceClass:
+    Description: The name of the compute and memory capacity classes of the DB instance.
+    Type: String
+    Default: db.t3.small
+    AllowedValues:
+      - db.t3.small
+      - db.t3.medium
+      - db.t3.large
+      - db.t3.xlarge
+      - db.t3.2xlarge
+      - db.r4.large
+      - db.r4.xlarge
+      - db.r4.2xlarge
+      - db.r4.4xlarge
+      - db.r4.8xlarge
+      - db.r4.16xlarge*
+      - db.r5.large
+      - db.r5.xlarge
+      - db.r5.2xlarge
+      - db.r5.4xlarge
+      - db.r5.8xlarge
+      - db.m4.large
+      - db.m4.xlarge
+      - db.m4.2xlarge
+      - db.m4.4xlarge
+      - db.m4.10xlarge
+      - db.m5.large
+      - db.m5.xlarge
+      - db.m5.2xlarge
+      - db.m5.4xlarge
+      - db.m5.8xlarge
+      - db.m5.12xlarge
+      - db.m6.large
+      - db.m6.xlarge
+      - db.m6.2xlarge
+      - db.m6.4xlarge
+      - db.m6.8xlarge
+      - db.m6.12xlarge
+    ConstraintDescription: Please choose a valid instance type.
+
+  DBAllocatedStorage:
+    Default: '20'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '1000'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  Engine:
+    Description: The name of the database engine to be used for this instance.
+    Type: String
+    Default: postgres
+
+  EngineVersion:
+    Description: 'PostgreSQL version.'
+    Type: String
+    Default: '12.6'
+    AllowedValues: ['9.6.23', '9.6.24', '10.17', '10.18', '10.19', '11.1', '11.4', '11.5', '11.6', '11.8', '11.10', '11.12', '11.13', '11.14', '12.6', '12.7', '12.8', '12.9', '13.3', '13.4', '13.5', '14.1'] # aws rds describe-db-engine-versions --engine postgres --query "DBEngineVersions[].EngineVersion"
+
+  MasterUsername:
+    Description: Please write username
+    Type: String
+
+  MasterPassword:
+    Description: Please write password (more then 8 characters)
+    Type: String
+    NoEcho: true
+
+Resources:
+  MyDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: cambium
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterPassword
+      DBInstanceClass: !Ref DBInstanceClass
+      MonitoringInterval: 0 
+      PubliclyAccessible: true 
+      MultiAZ: false
+      Tags:
+        - Key: Client
+          Value: Cambium
+        - Key: Name
+          Value: Test
+        - Key: Project
+          Value: DevOps
+        - Key: Chargeable
+          Value: "No"      
+      DBSecurityGroups:
+      - Ref: DBSecurityGroup
+      AllocatedStorage: !Ref DBAllocatedStorage
+      MaxAllocatedStorage: 1000
+  DBSecurityGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Properties:
+      DBSecurityGroupIngress:
+        EC2SecurityGroupName:
+          Ref: WebServerSecurityGroup
+      GroupDescription: Frontend Access
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP access via port 80 and SSH access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        CidrIp: 0.0.0.0/0
+  # DBSubnetGroup: 
+  #  Type: "AWS::RDS::DBSubnetGroup"
+  #  Properties:
+  #   DBSubnetGroupDescription: Subnet for the database
+  #   SubnetIds:
+  #     - Ref : PublicSubnet1
+  #     - Ref : PublicSubnet2

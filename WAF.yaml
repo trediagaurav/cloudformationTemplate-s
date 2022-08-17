@@ -1,0 +1,35 @@
+Resources:
+ # IMPORTANT : Want WAF to be global need to make it from N.Virginina region
+
+  StandardCambiumWaf: 
+    Type: "AWS::WAFv2::WebACL"
+    Properties: 
+      Name: Compilation
+      Scope: CLOUDFRONT # REGIONAL
+      Description: This is cambium standard Waf created global for all the development and qa projects
+      DefaultAction:
+        Allow:
+          CustomRequestHandling:
+            InsertHeaders:
+              - Name: AllowActionHeader1Name
+                Value: AllowActionHeader1Value
+              - Name: AllowActionHeader2Name
+                Value: AllowActionHeader2Value
+      VisibilityConfig:
+        SampledRequestsEnabled: false
+        CloudWatchMetricsEnabled: true
+        MetricName: ExampleWebACLMetric
+      Rules:
+        - Name: RuleWithAWSManagedRules
+          Priority: 0
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: false
+            CloudWatchMetricsEnabled: true
+            MetricName: RuleWithAWSManagedRulesMetric
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules: []

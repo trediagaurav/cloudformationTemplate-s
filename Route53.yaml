@@ -1,0 +1,34 @@
+  
+Parameters:  
+  KeyName:
+    Description: Key Pair for EC2
+    Type: 'AWS::EC2::KeyPair::KeyName'
+
+Resources:
+  MyEC2Instance: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-05c7cea0ca2434ebc"
+      KeyName: !Ref KeyName
+      BlockDeviceMappings: 
+      - DeviceName: "/dev/sdm"
+        Ebs: 
+          VolumeType: "io1"
+          Iops: "200"
+          DeleteOnTermination: "false"
+          VolumeSize: "20"
+      - DeviceName: "/dev/sdk"
+        NoDevice: {}
+  myDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId : Z0921147290Y06IF1KOKD
+      Comment: DNS name for my instance.
+      Name: !Join ['', [!Ref 'MyEC2Instance', ., 'cambium.co.il']]
+      Type: A
+      TTL: 900
+      ResourceRecords:
+      - !GetAtt MyEC2Instance.PublicIp
+  
+  
+  
