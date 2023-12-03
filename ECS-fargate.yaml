@@ -12,13 +12,10 @@ Parameters:
   Certificate:
     Type: String
     # Update with the certificate ARN from Certificate Manager, which must exist in the same region.
-    Default: 'arn:aws:acm:eu-west-1:240609415165:certificate/3d1fb1d7-fb66-4971-a088-8e82a3842a78'
+    Default: #######
   Image:
     Type: String
-    # Update with the Docker image. "You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag)."
-    # Default: 123456789012.dkr.ecr.region.amazonaws.com/image:tag
-    # Default: nginx:latest
-    Default: 240609415165.dkr.ecr.eu-west-1.amazonaws.com/boilerplate
+    Default: nginx:latest
   ServiceName:
     Type: String
     # update with the name of the service
