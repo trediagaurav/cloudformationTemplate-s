@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  LambdaFunction:
+    DeletionPolicy: "Delete"
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: "Lambda takes sft and drops it into a database RDS"
+      FunctionName: "saferPlaceTicket"
+      Handler: "HelloLambda1::HelloLambda1.Function::FunctionHandler"
+      CodeUri:
+        Bucket: dev-mileon-server
+        Key: saferPlaceTickets.zip
+      MemorySize: 512
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-052d3b9a552bdc1ae
+        SubnetIds:
+          - subnet-004992c4ea3f89416
+          - subnet-060864278a7f588d1
+      Role: arn:aws:iam::506710537171:role/lambda-role
+      Runtime: "dotnet6"
+      Timeout: 20
+      Tracing: "PassThrough"
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: AllAtOnce
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunction}"
+      
+
+  ExampleInvokePermission:
+    Type: AWS::Lambda::Permission
+    DependsOn: LambdaFunction
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+          - LambdaFunction
+          - Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: arn:aws:s3:::saferplace
+
+  ExampleS3:
+    Type: AWS::S3::Bucket
+    DependsOn: ExampleInvokePermission
+    Properties:
+      AccessControl: Private
+      BucketName: saferplace
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:Put
+            Function: !GetAtt [ LambdaFunction, Arn]
+  
+  SampleBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ExampleS3
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref ExampleS3
+                - /*
+            Principal: '*'
