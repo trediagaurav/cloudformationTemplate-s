@@ -1,0 +1,298 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  EC2Type:
+    Description: SFTP Instance mounted to s3 bucket which needs to be rebuild and set the folders according to the setup done inside the UserData of ec2 to get mounted at a specific folder inside the instance and s3.
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m4.large
+      - m4.xlarge
+      - c3.large
+      - c3.xlarge
+      - c4.large
+      - c4.xlarge
+      - r3.large
+      - r3.xlarge
+
+  InstanceImageId:
+    Description: The Amazon Machine Instance ID (AMI) for the EC2. The default option is for Linux2.
+    Type: String
+    Default: ami-0faab6bdbac9486fb   
+
+  KeyPair:
+    Description: EC2 KeyPair
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Existing EC2 KeyPair.
+  
+  VPCIdName:
+    Description: Select the VPC to launch the SFTPGateway into
+    Type: AWS::EC2::VPC::Id
+
+  SubnetID:
+    Description: Subnet ID
+    Type: AWS::EC2::Subnet::Id
+
+  FtpUsername1:
+    Type: String
+    Description: FTP username
+    Default: Hertz
+
+  FtpPassword1:
+    Type: String
+    NoEcho: true
+    Description: FTP password
+    Default: 123456789
+
+  FtpUsername2:
+    Type: String
+    Description: FTP username
+    Default: Budget
+
+  FtpPassword2:
+    Type: String
+    NoEcho: true
+    Description: FTP password
+    Default: 123456789
+
+  FtpUsername3:
+    Type: String
+    Description: FTP username
+    Default: ShlomoSixt
+
+  FtpPassword3:
+    Type: String
+    NoEcho: true
+    Description: FTP password
+    Default: 123456789
+
+  BucketName:
+    Type: String
+    Description: Name of the S3 bucket
+    Default: reportdevftptest
+
+Resources:
+  # S3Bucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !Ref BucketName
+  #     AccessControl: Private
+
+  # S3User:
+  #   Type: AWS::IAM::User
+  #   Properties:
+  #     UserName: SFTP-user
+
+  # S3UserAccessKey:
+  #   Type: AWS::IAM::AccessKey
+  #   Properties:
+  #     UserName:
+  #       Ref: S3User
+
+  # S3UserBucketPolicy:
+  #   Type: AWS::IAM::Policy
+  #   Properties:
+  #     PolicyName: S3UserBucketPolicy
+  #     PolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Action:
+  #             - s3:ListBucket
+  #           Resource:
+  #             Fn::Sub: arn:aws:s3:::${BucketName}
+  #         - Effect: Allow
+  #           Action:
+  #             - s3:*
+  #           Resource:
+  #             Fn::Sub: arn:aws:s3:::${BucketName}/*
+  #     Users:
+  #       - Ref: S3User
+
+  # SSMParameterAccess:
+  #   Type: AWS::IAM::Policy
+  #   Properties:
+  #     PolicyName: SSMParameterAccess
+  #     PolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Action:
+  #             - ssm:GetParameter
+  #           Resource: arn:aws:ssm:*:*:parameter/${AWS::StackName}/aws-*
+  #     Users:
+  #       - Ref: S3User
+
+  # SecureParam:
+  #   Type: Custom::CfnParamStore
+  #   Properties:
+  #     ServiceToken: !ImportValue CfnParamStore
+  #     Type: SecureString
+  #     Value: !Ref S3UserAccessKey
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref EC2Instance  # Associate the Elastic IP with the EC2 instance
+
+  Ec2RoleToS3:
+    Type: AWS::IAM::Role
+    Properties: 
+      RoleName: !Join ['', [Ec2RoleToS3]]
+      AssumeRolePolicyDocument: 
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ec2.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - s3:*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}
+                  - !Sub arn:aws:s3:::${BucketName}/*
+          PolicyName: Ec2RoleToS3
+
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref Ec2RoleToS3
+
+  SFTPGatewaySG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SFTPGateway Security Group
+      VpcId: !Ref VPCIdName
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 147.236.124.54/32
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref InstanceImageId
+      IamInstanceProfile: !Ref RootInstanceProfile
+      InstanceType: !Ref EC2Type
+      KeyName: !Ref KeyPair
+      SecurityGroupIds:
+        - !Ref SFTPGatewaySG
+      SubnetId: !Ref SubnetID
+      Tags:
+        - Key: Name
+          Value: SFTP-Instance-prod
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/sh
+          export FTP_USERNAME1=${FtpUsername1}
+          export FTP_PASSWORD1=${FtpPassword1}
+
+          export FTP_USERNAME2=${FtpUsername2}
+          export FTP_PASSWORD2=${FtpPassword2}
+
+          export FTP_USERNAME3=${FtpUsername3}
+          export FTP_PASSWORD3=${FtpPassword3}
+
+          sudo su -
+          echo "Installing necessary packages..."
+          apt update
+          apt install -y s3fs vsftpd
+          apt-get -y install cron
+
+          # Enable password authentication in SSH
+          sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          
+          PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+
+          # Enable vsftpd to write to folder
+          echo "write_enable=YES" >> /etc/vsftpd.conf
+          echo "chroot_local_user=YES" >> /etc/vsftpd.conf
+          echo "pasv_enable=YES" >> /etc/vsftpd.conf
+          echo "pasv_min_port=1024" >> /etc/vsftpd.conf
+          echo "pasv_max_port=1048" >> /etc/vsftpd.conf
+          echo "pasv_address=$PUBLIC_IP" >> /etc/vsftpd.conf
+
+
+          # Restart SSH and vsftpd services
+
+          sudo service vsftpd restart
+          sudo service ssh restart
+
+          # Configure FTP user
+          useradd -m -d /home/$FTP_USERNAME1 -s /bin/bash $FTP_USERNAME1
+          echo "$FTP_USERNAME1:$FTP_PASSWORD1" | chpasswd
+
+          useradd -m -d /home/$FTP_USERNAME2 -s /bin/bash $FTP_USERNAME2
+          echo "$FTP_USERNAME2:$FTP_PASSWORD2" | chpasswd
+
+          useradd -m -d /home/$FTP_USERNAME3 -s /bin/bash $FTP_USERNAME3
+          echo "$FTP_USERNAME3:$FTP_PASSWORD3" | chpasswd
+
+          # Replace with your S3 bucket name and desired mount point
+          mkdir -p /home/$FTP_USERNAME1/share
+          chown $FTP_USERNAME1:$FTP_USERNAME1 /home/$FTP_USERNAME1/share
+          chown root:root /home/$FTP_USERNAME1/share
+          chmod 775 /home/$FTP_USERNAME1/share
+          
+          mkdir -p /home/$FTP_USERNAME2/share
+          chown $FTP_USERNAME2:$FTP_USERNAME2 /home/$FTP_USERNAME2/share
+          chown root:root /home/$FTP_USERNAME2/share
+          chmod 775 /home/$FTP_USERNAME2/share
+
+          mkdir -p /home/$FTP_USERNAME3/share
+          chown $FTP_USERNAME3:$FTP_USERNAME3 /home/$FTP_USERNAME3/share
+          chown root:root /home/$FTP_USERNAME3/share
+          chmod 775 /home/$FTP_USERNAME3/share
+
+          #Making User-group
+          groupadd sftp-user
+          usermod -aG sftp-user $FTP_USERNAME1
+          usermod -aG sftp-user $FTP_USERNAME2
+          usermod -aG sftp-user $FTP_USERNAME3
+
+          # Restriction of users access only /home
+          echo "Match Group sftp-user" >>  /etc/ssh/sshd_config
+          echo "ChrootDirectory /home" >> /etc/ssh/sshd_config
+          echo "ForceCommand internal-sftp" >> /etc/ssh/sshd_config
+          echo "AllowTcpForwarding no" >> /etc/ssh/sshd_config
+          echo "X11Forwarding no" >> /etc/ssh/sshd_config
+          
+          # Restart sshd
+          sudo systemctl restart sshd
+
+          #Mouting S3
+          /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME1 -o use_cache=/tmp -o allow_other -o uid=1001 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME1/share -o iam_role="Ec2RoleToS3" -o nonempty
+          /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME2 -o use_cache=/tmp -o allow_other -o uid=1002 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME2/share -o iam_role="Ec2RoleToS3" -o nonempty
+          /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME3 -o use_cache=/tmp -o allow_other -o uid=1003 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME3/share -o iam_role="Ec2RoleToS3" -o nonempty
+          echo "S3 buckets mounted at /home/$FTP_USERNAME1/share, /home/$FTP_USERNAME2/share, /home/$FTP_USERNAME3/share"
+
+          #Enable Cron
+          sudo systemctl enable cron
+
+          #insert it inside crontab for Reboot
+          (echo "@reboot /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME1 -o use_cache=/tmp -o allow_other -o uid=1001 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME1/share -o iam_role=Ec2RoleToS3 -o nonempty" && \
+           echo "@reboot /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME2 -o use_cache=/tmp -o allow_other -o uid=1002 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME2/share -o iam_role=Ec2RoleToS3 -o nonempty" && \
+           echo "@reboot /usr/bin/s3fs ${BucketName}:/SFTP/$FTP_USERNAME3 -o use_cache=/tmp -o allow_other -o uid=1003 -o mp_umask=002 -o multireq_max=5 /home/$FTP_USERNAME3/share -o iam_role=Ec2RoleToS3 -o nonempty") | crontab
+
+
+
+          
+Outputs:
+  
+  EC2ElasticIP:
+    Description: Elastic IP address associated with the EC2 instance
+    Value: !Ref ElasticIP
