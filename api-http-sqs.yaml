@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Creates an API Gateway HTTP API with {proxy+} route and a Lambda function
+
+Resources:
+  ApiGateway:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      ProtocolType: HTTP
+      Name: sqsdemo
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ApiGateway
+      StageName: $default
+      AutoDeploy: true
+
+  Queue:
+    Type: AWS::SQS::Queue
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: apigateway.amazonaws.com
+      Policies:
+        - PolicyName: sqssend
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt Queue.Arn
+
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ApiGateway
+      CredentialsArn: !GetAtt Role.Arn
+      PayloadFormatVersion: "1.0"
+      IntegrationType: AWS_PROXY
+      IntegrationSubtype: SQS-SendMessage
+      ResponseParameters:
+        "200":
+          ResponseParameters:
+            - Source: "Success"
+              Destination: "append:header.Status"
+      RequestParameters:
+        QueueUrl: !Ref Queue
+        MessageBody: $request.body
+        # Source: $request.path.source
+        # DetailType: $request.path.detailType
+        # Detail: $request.body
+        MessageAttributes: >-
+          {
+            "UserAgent": {
+              "DataType": "String",
+              "StringValue": "${request.header.user-agent}"
+            },
+            "Path": {
+              "DataType": "String",
+              "StringValue": "${context.path}"
+            },
+            "sourceIp": {
+              "DataType": "String",
+              "StringValue": "${context.identity.sourceIp}"
+            },
+            "Domain": {
+              "DataType": "String",
+              "StringValue": "${context.domainName}"
+            },
+            "TimeStamp": {
+              "DataType": "String",
+              "StringValue": "${context.requestTime}"
+            },
+            "queryStringParametersCatch": {
+            "DataType": "String",
+            "StringValue": "${request.querystring.catch}"
+            },
+            "detailType": {
+              "DataType": "String",
+              "StringValue": "${request.path.proxy}"
+            }
+          }
+
+  Route:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ApiGateway
+      RouteKey: ANY /{proxy+}
+      Target: !Sub integrations/${Integration}
+
+  lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Description: Insert Data inside DynamoDB
+      FunctionName: sqs-dynamodb-lambda
+      Role: !GetAtt lambdaRole.Arn
+      Runtime: nodejs16.x
+      Timeout: 30
+      Code:
+        ZipFile: |
+          const aws = require('aws-sdk');
+
+          // initialise dynamoDB client
+          const dynamoDB = new aws.DynamoDB.DocumentClient({
+              region:'eu-central-1',
+              apiVersion:'2012-08-10'
+          });
+
+          exports.handler = async (event) => {
+            try{
+
+                console.log('event: ', event);
+
+                // event has propety called "Records"
+                const { Records } = event;
+
+                // parse the message into json object:
+                # const body = JSON.parse(Records[0].body);
+                # const id = Records[0].messageId;
+                # console.log("id of the message", id);
+                // logs the body which is message
+                # console.log("Incoming message body from SQS :", body);
+
+                # const params = {
+                #     TableName:'cheetah-sqs-table',
+                #       Item: {
+                #         id : id,
+                #         message : body,
+                #       //   age : body.age
+                #     }
+                # };
+                # console.log("params", params);
+
+                # // write data to dynamo DB:
+                # await dynamoDB.put(params).promise();
+                return {
+                  statusCode: 200,
+                  body: JSON.stringify('Successfully written to DynamoDB'),
+              };
+            } catch(error){
+                console.error('Error in executing lambda: ', error);
+                return {"statusCode": 500, "message:": "Error while execution"};
+            }
+          };
+
+  lambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: /
+      Policies:
+        - PolicyName: LambdaRole
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sqs:GetQueueAttributes
+                  - sqs:DeleteMessage
+                  - sqs:ReceiveMessage
+                Resource: !GetAtt Queue.Arn
+              # - Effect: Allow
+              #   Action:
+              #     - dynamodb:BatchWriteItem
+              #     - dynamodb:DeleteItem
+              #     - dynamodb:DescribeTable
+              #     - dynamodb:PutItem
+              #     - dynamodb:UpdateItem
+              #   Resource: !GetAtt DynamoDBTable.Arn
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${lambda}"
+      RetentionInDays: 14
+
+  SQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    DependsOn:
+      - LogGroup
+    Properties:
+      BatchSize: 1
+      Enabled: true
+      EventSourceArn:
+        Fn::GetAtt:
+          - Queue
+          - Arn
+      FunctionName: !Ref lambda
